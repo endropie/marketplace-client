@@ -1,0 +1,24 @@
+{
+    "name": "virmata/marketplace-client",
+    "description": "The tool of api some e-marketplace",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Virmata\\MarketplaceClient\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "illuminate/support": "^10.0|^11.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5|^10.0",
+        "orchestra/testbench": "^7.0|^8.0|^9.0"
+    },
+    "authors": [
+        {
+            "name": "virmata"
+        }
+    ]
+}
