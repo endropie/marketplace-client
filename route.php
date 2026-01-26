@@ -103,11 +103,12 @@ Route::group(['prefix' => 'tokopedia'], function (\Illuminate\Routing\Router $ro
 
         $model->save();
 
-        return [
+        return view('marketplace-client::callback', [
+            'id' => $model->id,
             'name' => $model->name,
-            'payload' => $model->payload,
             'via' => $model->via,
-        ];
+            'payload' => $model->payload,
+        ]);
     });
 });
 
