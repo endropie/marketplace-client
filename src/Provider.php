@@ -17,7 +17,8 @@ class Provider extends ServiceProvider
 
         $this->mergeConfigFrom(__DIR__.'/../config/marketplace.php', 'marketplace');
         $this->registerConfig();
-        $this->registerMigrations(__DIR__.'/../database/migrations');
+        $this->registerMigrations();
+        $this->registerAssets();
     }
 
     public function boot()
@@ -50,8 +51,19 @@ class Provider extends ServiceProvider
         }
     }
 
-    protected function registerMigrations(string $directory): void
+    protected function registerAssets(): void
     {
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/public/js/marketplace-client.js' => base_path('public/js/marketplace-client.js'),
+            ], 'assets');
+        }
+    }
+
+    protected function registerMigrations(?string $directory = null): void
+    {
+        if (is_null($directory)) $directory = __DIR__.'/../database/migrations';
+
         if ($this->app->runningInConsole()) {
             $generator = function(string $directory): Generator {
                 foreach ($this->app->make('files')->allFiles($directory) as $file) {
