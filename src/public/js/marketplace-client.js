@@ -2,6 +2,7 @@ class MCJS {
 
     constructor () {
         this.host = 'http://marketplace.local';
+        this.storeLogged = null;
     }
     init (data = {}) {
         console.log("Marketplace Client JS Initialized");
@@ -18,38 +19,36 @@ class MCJS {
      * @returns {Promise} - A promise that resolves with the registered store data or rejects with an error message.
      */
     async register (via) {
+        this.storeLogged = null;
 
         return new Promise((resolve, reject) => {
             // Open the new window and keep a reference to it
             const windowRegister = window.open(`${this.host}/marketplace/${via}/auth`, '_blank', 'width=870,height=520');
 
-            if (windowRegister) {
-                let storeLogined = null;
-                // Start checking the 'closed' property every 500 milliseconds
+            if (windowRegister)
+            {
                 const closeCheckInterval = setInterval(() => {
-                    // console.log('windowReg', windowRegister);
-                    if ('marketplacestore' in windowRegister) {
-                        storeLogined = windowRegister.marketplacestore;
-                        windowRegister.close();
-                    }
 
                     if (windowRegister.closed) {
-                        clearInterval(closeCheckInterval); // Stop the interval
+                        clearInterval(closeCheckInterval);
 
-                        if (storeLogined === null) {
+                        if (this.storeLogged === null) {
                             reject({ message: 'User closed the window before completing registration.', error: true });
-                            return;
                         }
                         else {
-                            console.warn('STORE:', storeLogined);
-                            resolve({ data: storeLogined });
+                            resolve({ data: this.storeLogged });
                         }
+                        this.storeLogged = null;
                     }
                 }, 1000);
             } else {
                 alert('Could not open window. Please check pop-up blockers.');
             }
         });
+    }
+
+    setLogged(data) {
+        this.storeLogged = data;
     }
 }
 

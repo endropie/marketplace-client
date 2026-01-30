@@ -6,17 +6,14 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <script type="text/javascript">
-            function sendDataToParent() {
-                if (typeof window.onCloseWindowRegister === 'function') {
-                    window.onCloseWindowRegister({message: "More data from child"});
-                }
-            }
-            window.marketplacestore = {
+            console.log("CHILD - Sending data to parent...", window.opener.MCJS);
+            window.opener.MCJS.setLogged({
                 id: "{{ $id }}",
                 name: "{{ $name }}",
-            };
-            console.log("CHILD - Closing window...");
-            // window.close();
+            });
+            setTimeout(() => {
+                window.close();
+            }, 800);
         </script>
     </head>
     <body>&nbsp;</body>
