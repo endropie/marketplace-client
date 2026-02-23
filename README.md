@@ -58,22 +58,36 @@ return [
 ```
 
 
-## ⚙️ Publish Config & Migration
+## ⚙️ Publish Config, Assets & Migration
 
 Package ini menyediakan **file konfigurasi** dan **database migration**.
 
-### Publish Semua (Config + Migration)
+### Publish Semua (Config + Assets + Migration)
 
 ```bash
-php artisan vendor:publish --provider="Virmata\MarketplaceClient\Provider"
+php artisan vendor:publish --provider="Virmata\MarketplaceClient"
 ```
 
 ---
 
-### Publish Hanya File Config
+### Publish File Config
 
 ```bash
-php artisan vendor:publish --tag=marketplace-config
+php artisan vendor:publish --provider="Virmata\MarketplaceClient" --tag=config
+```
+
+File akan terpublish ke:
+
+```text
+config/marketplace.php
+```
+
+---
+
+### Publish File Assets
+
+```bash
+php artisan vendor:publish --provider="Virmata\MarketplaceClient" --tag=assets
 ```
 
 File akan terpublish ke:
@@ -88,7 +102,7 @@ config/marketplace.php
 ### Publish Hanya File Migration
 
 ```bash
-php artisan vendor:publish --tag=marketplace-migrations
+php artisan vendor:publish --provider="Virmata\MarketplaceClient" --tag=migrations
 ```
 
 File migration akan muncul di:

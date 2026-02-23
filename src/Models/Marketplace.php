@@ -32,8 +32,12 @@ class Marketplace extends Model
         return $this->client->getOrder($parameter, function ($collection) {
 
             switch ($this->via) {
-                case 'shopee': $arrayData = self::mapResponseShopeeOrder($collection); break;
-                case 'tokopedia': $arrayData = self::mapResponseTokopediaOrder($collection); break;
+                case 'shopee':
+                    $arrayData = collect($collection)->map(fn($e) => self::mapResponseShopeeOrder($e))->toArray();
+                    break;
+                case 'tokopedia':
+                    $arrayData = collect($collection)->map(fn($e) => self::mapResponseTokopediaOrder($e))->toArray();
+                    break;
                 default:
                     throw new \Exception("Marketplace via [{$this->via}] not supported.");
             }
@@ -45,30 +49,57 @@ class Marketplace extends Model
         });
     }
 
-    public static function mapResponseShopeeOrder(Collection $collection)
+    public function getMarketplaceOrderDetail(array $parameter)
     {
-        return collect($collection)->map(function($order) {
+        return $this->client->getOrderDetail($parameter, function ($data) {
+
+            switch ($this->via) {
+                case 'shopee': $arrayData = self::mapResponseShopeeOrder($data); break;
+                case 'tokopedia': $arrayData = self::mapResponseTokopediaOrder($data); break;
+                default:
+                    throw new \Exception("Marketplace via [{$this->via}] not supported.");
+            }
             return [
-                'sn' => $order['order_sn'],
-                'status' => $order['order_status'],
-                'total_amount' => $order['total_amount'],
-                'created_at' => isset($order['create_time']) ? date('Y-m-d H:i:s', $order['create_time']) : null,
-                'updated_at' => isset($order['update_time']) ? date('Y-m-d H:i:s', $order['update_time']) : null,
-                'items' => collect($order['item_list'])->map(function($item) {
-                    return [
-                        'sku' => $item['item_sku'],
-                        'name' => $item['item_name'],
-                        'quantity' => $item['model_quantity_purchased'],
-                        'price' => $item['model_discounted_price'],
-                    ];
-                })->toArray(),
+                'data' => $arrayData,
+                'original' => $data,
             ];
 
-        })->toArray();
+        });
     }
 
-    public static function mapResponseTokopediaOrder($collection)
+    public static function mapResponseShopeeOrder($order)
     {
-        return $collection->toArray();
+        return [
+            'via' => 'shopee',
+            'sn' => $order['order_sn'],
+            'date' => isset($order['create_time']) ? date('Y-m-d', $order['create_time']) : null,
+            'status' => $order['order_status'],
+            'items' => collect($order['item_list'])->map(function($item) {
+                return [
+                    'sku' => $item['item_sku'],
+                    'name' => $item['item_name'],
+                    'quantity' => $item['model_quantity_purchased'],
+                    'price' => $item['model_discounted_price'],
+                ];
+            })->toArray(),
+        ];
+    }
+
+    public static function mapResponseTokopediaOrder($order)
+    {
+        return [
+            'via' => 'tokopedia',
+            'sn' => $order['id'],
+            'date' => boolval($order['create_time']) ? date('Y-m-d', $order['create_time']) : null,
+            'status' => $order['status'],
+            'items' => collect($order['line_items'])->map(function($item) {
+                return [
+                    'sku' => $item['seller_sku'],
+                    'name' => $item['product_name'] . ($item['seller_sku'] ? " - " . $item['sku_name'] : ''),
+                    'quantity' => $item['quantity'],
+                    'price' => doubleval($item['sale_price']),
+                ];
+            })->toArray(),
+        ];
     }
 }

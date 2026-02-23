@@ -3,12 +3,12 @@
 namespace Virmata\MarketplaceClient\Tools;
 
 use GuzzleHttp\Middleware;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Virmata\MarketplaceClient\Contracts\ClientInterface;
 
-use function Termwind\parse;
 
 class Tokopedia implements ClientInterface
 {
@@ -34,7 +34,7 @@ class Tokopedia implements ClientInterface
 
     public static function http()
     {
-        return Http::baseUrl(config('marketplace.via.tokopedia.host'))
+        return Http::baseUrl(config('marketplace.tokopedia.host'))
             ->acceptJson()
             ->contentType('application/json')
             ->withResponseMiddleware(function (ResponseInterface $response) {
@@ -50,18 +50,6 @@ class Tokopedia implements ClientInterface
 
                 return $response;
             });
-    }
-
-    public static function getShops($accessToken)
-    {
-        $apiVersion = static::$apiVersion;
-        $pathURL = "/authorization/$apiVersion/shops";
-
-        return static::http()
-            ->contentType('application/json')
-            ->withHeader("x-tts-access-token", $accessToken)
-            ->withMiddleware(static::middleware())
-            ->get($pathURL);
     }
 
     public static function middleware ($options = []) {
@@ -115,35 +103,36 @@ class Tokopedia implements ClientInterface
 
     public function api(): \Illuminate\Http\Client\PendingRequest
     {
-        if (now()->greaterThan($this->getPayload('refresh_at'))) {
+        if (true || Carbon::now()->greaterThan($this->getPayload('refresh_at')['date'])) {
             $this->refreshToken();
         }
 
-        $accessToken = $this->getPayload('access_token');
+        $options = [];
 
+        if ($this->getPayload('cipher')) {
+            $options = array_merge($options, ['shop_cipher' => $this->getPayload('cipher')]);
+        }
+
+        $accessToken = $this->getPayload('access_token');
         return  static::http()
             ->contentType('application/json')
             ->withHeader("x-tts-access-token", $accessToken)
+            ->withQueryParameters($options)
             ->withMiddleware(static::middleware());
     }
 
     public function refreshToken()
     {
-        $pathURL = '/api/v2/auth/access_token/get';
+        $pathURL = 'https://auth.tiktok-shops.com/api/v2/token/refresh';
 
         $appid  = env('MARKETPLACE_TOKOPEDIA_APPID');
         $secret = env('MARKETPLACE_TOKOPEDIA_SECRET');
-        $timestamp = time();
-        $refreshToken = $this->getPayload('refresh_token');
-        $shopID = $this->getPayload('shop_id');
 
-        $string = sprintf("%s%s%s", $appid, $pathURL, $timestamp, $refreshToken, $shopID);
-        $sign = hash_hmac('sha256', $string, $secret);
-
-        $response = static::http()->post($pathURL . "?partner_id=$appid&timestamp=$timestamp&sign=$sign", [
-            'partner_id' => intval($appid),
-            'shop_id' => intval($shopID),
-            'refresh_token' => $refreshToken,
+        $response = static::http()->get($pathURL, [
+            'app_key' => $appid,
+            'app_secret' => $secret,
+            'refresh_token' => $this->getPayload('refresh_token'),
+            'grant_type' => 'refresh_token',
         ]);
 
         if ($response->failed()) {
@@ -154,13 +143,13 @@ class Tokopedia implements ClientInterface
             abort(406, '[COMMERCE] Tokopedia refresh token failed. (' . $response->json('message') . ')');
         }
 
-
+        $auth = $response->json('data');
         $this->marketConnect->update([
             'payload' => Tokopedia::createPayload([
-                'shop_id' => $shopID,
-                'access_token' => $response->json('access_token'),
-                'refresh_token' => $response->json('refresh_token'),
-                'refresh_at' => now()->addSeconds(intval($response->json('expire_in')) - 300),
+                ...$this->getPayload(),
+                'access_token' => $auth['access_token'],
+                'refresh_token' => $auth['refresh_token'],
+                'refresh_at' => Carbon::now()->setTimestamp(intval($auth['access_token_expire_in']) - 300)->format('Y-m-d H:i:s'),
             ])
         ]);
     }
@@ -170,9 +159,20 @@ class Tokopedia implements ClientInterface
         return encrypt(json_encode($data));
     }
 
+    public static function getShops($accessToken)
+    {
+        $pathURL = "/authorization/202309/shops";
+
+        return static::http()
+            ->contentType('application/json')
+            ->withHeader("x-tts-access-token", $accessToken)
+            ->withMiddleware(static::middleware())
+            ->get($pathURL);
+    }
+
     static public function getToken(string $code)
     {
-        $host = config('marketplace.via.tokopedia.auth');
+        $host = 'https://auth.tiktok-shops.com'; // config('marketplace.tokopedia.host');
         $pathURL = '/api/v2/token/get';
         $appKey = env('MARKETPLACE_TOKOPEDIA_APPID');
         $secret = env('MARKETPLACE_TOKOPEDIA_SECRET');
@@ -232,29 +232,121 @@ class Tokopedia implements ClientInterface
         }
     }
 
-    public function getSyncronizeProducts($lastSync = null, $query = [], $data = [])
+    public function getOrder(array $parameter = [], callable $callback)
     {
-        $data = [
-            'status' => $attrs['status'] ?? 'ALL',
-            'updated_after' => $lastSync,
-        ];
+        $map = config("marketplace.tokopedia.status", []);
+        $status = !isset($parameter['status']) ? null
+            : ($map[strtoupper($parameter['status'])] ?? null);
 
-        $query = [
-            'shop_cipher' => $this->getPayload('cipher'),
-            'page_size' => $attrs['limit'] ?? 50,
-        ];
-
-        $done = false;
-        $rs = [];
-
-        while ($done === false) {
-            $response = $this->api()->post("/product/202502/products/search?". http_build_query($query), $data);
-
-            $rs = array_merge($rs, $response->json('data.products'));
-
-            if (true) $done = true;
+        if (isset($parameter['dates'][0]) && isset($parameter['dates'][1])) {
+            $lastTime = strtotime($parameter['dates'][0]);
+            $newTime = strtotime($parameter['dates'][1] . ' +1 day');
+        }
+        elseif (isset($parameter['date'])) {
+            $lastTime = strtotime($parameter['date']);
+            $newTime = strtotime($parameter['date'] . ' +1 day');
+        }
+        else {
+            $newTime = Carbon::createFromTime(0,0,0)->timestamp;
+            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp;
         }
 
-        return $rs;
+        $response = $this->onFetchOrder([
+            'response_optional_fields' => 'order_status',
+            'order_status' => $status,
+            'time_range_field' => 'create_time',
+            'create_time_ge' => $lastTime,
+            'create_time_lt' => $newTime,
+        ]);
+
+        $array = $callback($response);
+
+        return (array) $array;
+    }
+
+    protected function onFetchOrder($mergeParams = []): \Illuminate\Support\Collection
+    {
+
+        $collection = collect();
+        $done = false;
+        $orderPackage = [];
+
+        ## Fetch order list
+        while ($done == false) {
+            $response = $this->api()
+                ->withQueryParameters([
+                    'page_size' => 50,
+                ])
+                ->post('/order/202309/orders/search', array_merge([
+                    'create_time_ge' => Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp,
+                    'create_time_lt' => Carbon::createFromTime(0,0,0)->timestamp,
+
+                ], $mergeParams));
+
+            $orders = collect($response->json('data.orders'));
+
+            if ($orders->count() <= 0) break;
+
+            $orders->each(function($e) use (&$collection, &$orderPackage) {
+
+                $items = collect($e['line_items'])->reduceWithKeys(function($all, $item) use (&$orderPackage, $e) {
+
+                    $key = $item['sku_id'] ?: 'ID:'. $item['product_id'];
+
+                    if (!isset($all[$key])) {
+                         $all[$key] = array_merge($item, ['quantity' => 0]);
+                    }
+
+                    $all[$key]['quantity']++;
+
+                    return $all;
+                }, []);
+
+                $collection->push(array_merge($e, [
+                    'line_items' => array_values($items),
+                    'line_itemx' => $e['line_items'],
+                    'package' => $orderPackage
+                ]));
+
+            });
+
+            if(!$response->json('data.next_page_token')) {
+                $done = true;
+            }
+        }
+
+        return $collection;
+    }
+
+    public function getOrderDetail(array $parameter = [], callable $callback)
+    {
+        $map = config("marketplace.tokopedia.status", []);
+        $status = !isset($parameter['status']) ? null
+            : ($map[strtoupper($parameter['status'])] ?? null);
+
+        if (isset($parameter['dates'][0]) && isset($parameter['dates'][1])) {
+            $lastTime = strtotime($parameter['dates'][0]);
+            $newTime = strtotime($parameter['dates'][1] . ' +1 day');
+        }
+        elseif (isset($parameter['date'])) {
+            $lastTime = strtotime($parameter['date']);
+            $newTime = strtotime($parameter['date'] . ' +1 day');
+        }
+        else {
+            $newTime = Carbon::createFromTime(0,0,0)->timestamp;
+            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp;
+        }
+
+        $response = $this->onFetchOrder([
+            'response_optional_fields' => 'order_status',
+            'order_status' => $status,
+            'time_range_field' => 'create_time',
+            'create_time_ge' => $lastTime,
+            'create_time_lt' => $newTime,
+        ]);
+
+        $array = $callback($response);
+
+        return (array) $array;
     }
 }

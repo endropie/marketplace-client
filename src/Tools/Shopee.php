@@ -3,6 +3,7 @@
 namespace Virmata\MarketplaceClient\Tools;
 
 use GuzzleHttp\Middleware;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -32,7 +33,7 @@ class Shopee implements ClientInterface
 
     public static function http()
     {
-        return Http::baseUrl(config('marketplace.via.shopee.host'))
+        return Http::baseUrl(config('marketplace.shopee.host'))
             ->acceptJson()
             ->withResponseMiddleware(function (ResponseInterface $response) {
 
@@ -92,7 +93,6 @@ class Shopee implements ClientInterface
 
     public function refreshToken()
     {
-        // dump('Refreshing Shopee Token...', $this->getPayload());
         $pathURL = '/api/v2/auth/access_token/get';
 
         $appid  = env('MARKETPLACE_SHOPEE_APPID');
@@ -136,7 +136,7 @@ class Shopee implements ClientInterface
 
     static public function getToken(string $code, string $shopID)
     {
-        $host = config('marketplace.via.shopee.host');
+        $host = config('marketplace.shopee.host');
         $pathURL = '/api/v2/auth/token/get';
 
         $appID  = env('MARKETPLACE_SHOPEE_APPID');
@@ -157,7 +157,7 @@ class Shopee implements ClientInterface
 
     static public function getInfo(string $accessToken, string $shopID)
     {
-        $host = config('marketplace.via.shopee.host');
+        $host = config('marketplace.shopee.host');
         $path = '/api/v2/shop/get_shop_info';
         $appid = env('MARKETPLACE_SHOPEE_APPID');
         $secret = env('MARKETPLACE_SHOPEE_SECRET');
@@ -237,9 +237,23 @@ class Shopee implements ClientInterface
 
     public function getOrder(array $parameter = [], callable $callback)
     {
-        $status = $parameter['status'] ?? null;
-        $lastTime = $this->marketplace->option['sync_order_last_creating_time'] ?? now()->addDays(-15)->timestamp;
-        $newTime = time();
+        $map = config("marketplace.shopee.status", []);
+        $status = !isset($parameter['status']) ? null
+            : ($map[strtoupper($parameter['status'])] ?? null);
+
+        if (isset($parameter['dates'][0]) && isset($parameter['dates'][1])) {
+            $lastTime = strtotime($parameter['dates'][0]);
+            $newTime = strtotime($parameter['dates'][1] . ' +1 day');
+        }
+        elseif (isset($parameter['date'])) {
+            $lastTime = strtotime($parameter['date']);
+            $newTime = strtotime($parameter['date'] . ' +1 day');
+        }
+        else {
+            $newTime = Carbon::createFromTime(0,0,0)->timestamp;
+            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp;
+        }
+
         $response = $this->onFetchOrder([
             'response_optional_fields' => 'order_status',
             'order_status' => $status,
@@ -253,21 +267,6 @@ class Shopee implements ClientInterface
         return (array) $array;
     }
 
-    public function getOrderShipParameter(): array
-    {
-        // $lastTime = $this->marketplace->option['sync_order_last_creating_time'] ?? now()->addDays(-15)->timestamp;
-        // $newTime = time();
-        $response =$this->marketplace->client->api()->get('/api/v2/order/get_order_list', [
-            'response_optional_fields' => 'order_status',
-            'order_status' => 'READY_TO_SHIP',
-            // 'time_range_field' => 'create_time',
-            // 'time_from' => $lastTime,
-            // 'time_to' => $newTime,
-        ]);
-
-        return $response->json();
-    }
-
     protected function onFetchOrder($mergeParams = []): \Illuminate\Support\Collection
     {
 
@@ -278,16 +277,9 @@ class Shopee implements ClientInterface
         ## Fetch order list
         while ($done == false) {
             $response = $this->api()->get('/api/v2/order/get_order_list', array_merge([
-                'offset' => $offset,
                 'page_size' => 50,
                 'response_optional_fields' => 'order_status',
-                'time_range_field' => 'update_time',
-                'time_from' => now()->addDays(-1)->timestamp,
-                'time_to' => time(),
-
             ], $mergeParams, ['offset' => $offset]));
-
-            // dump('Order List Response', $response->json(), $lastTime, $newTime);
 
             $sn = collect($response->json('response.order_list'))->pluck('order_sn');
 
@@ -346,6 +338,16 @@ class Shopee implements ClientInterface
         }
 
         return $collection;
+    }
+
+    public function getOrderShipParameter(): array
+    {
+        $response = $this->marketplace->client->api()->get('/api/v2/order/get_order_list', [
+            'response_optional_fields' => 'order_status',
+            'order_status' => 'READY_TO_SHIP',
+        ]);
+
+        return $response->json();
     }
 
     public function request($module, array $attrs = [])

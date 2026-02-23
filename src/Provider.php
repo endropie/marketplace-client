@@ -29,6 +29,10 @@ class Provider extends ServiceProvider
             ->group(__DIR__.'/../route.php');
 
 
+        if ($this->app->environment('local', 'testing', 'staging')) {
+            config()->set('marketplace.shopee.host', 'https://openplatform.sandbox.test-stable.shopee.sg');
+        }
+
         $this->expectJsonResponse();
     }
 

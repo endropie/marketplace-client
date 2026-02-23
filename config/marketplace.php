@@ -5,15 +5,24 @@ return [
 
     "model" => Virmata\MarketplaceClient\Models\Marketplace::class,
 
-    "via" => [
-        "shopee" => [
-            "host" => "https://openplatform.sandbox.test-stable.shopee.sg",
-            "authorize_url" => "https://open.sandbox.test-stable.shopee.com/auth",
+    "shopee" => [
+        "host" => "https://partner.shopeemobile.com",
+        "status" => [
+            "READY" => "READY_TO_SHIP",
+            "PROCESSED" => "PROCESSED",
+            "PICKUP" => "SHIPPED",
+            "COMPLETED" => "COMPLETED",
+            "CANCELED" => "CANCELED",
         ],
-        "tokopedia" => [
-            "host" => "https://open-api.tiktokglobalshop.com",
-            "auth" => "https://auth.tiktok-shops.com",
-            "authorize_url" => "https://services.tiktokshop.com/open/authorize",
-        ]
     ],
+    "tokopedia" => [
+        "host" => "https://open-api.tiktokglobalshop.com",
+        "status" => [
+            "READY" => "AWAITING_SHIPMENT",
+            "PROCESSED" => "AWAITING_COLLECTION",
+            "PICKUP" => "IN_TRANSIT",
+            "COMPLETED" => "COMPLETED",
+            "CANCELED" => "CANCELED",
+        ],
+    ]
 ];

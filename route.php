@@ -24,7 +24,11 @@ Route::group(['prefix' => 'shopee'], function (\Illuminate\Routing\Router $route
             'redirect_uri' => env('APP_URL', 'http://localhost') . "/$uri",
         ]);
 
-        return redirect()->away(config('marketplace.via.shopee.authorize_url') ."?$link");
+        $authURL = app()->environment('local', 'testing', 'staging')
+            ? "https://open.sandbox.test-stable.shopee.com/auth"
+            :  "https://open.shopee.com/auth";
+
+        return redirect()->away("$authURL?$link");
     });
 
     $router->get("/auth-callback", function (\Illuminate\Http\Request $request) {
@@ -34,9 +38,9 @@ Route::group(['prefix' => 'shopee'], function (\Illuminate\Routing\Router $route
         ]);
 
         $response = Shopee::getToken($request->get('code'), $request->get('shop_id'));
-        $data = $response->json();
+        $auth = $response->json();
 
-        $shop = Shopee::getInfo($data['access_token'], $request->get('shop_id'));
+        $shop = Shopee::getInfo($auth['access_token'], $request->get('shop_id'));
 
         $model = app(config('marketplace.model'))->firstOrNew([
             'code' => $request->get('shop_id'),
@@ -45,11 +49,11 @@ Route::group(['prefix' => 'shopee'], function (\Illuminate\Routing\Router $route
 
         $model->name = $shop['shop_name'];
 
-        $model->payload = Shopee::createPayload([
+        $model->payload = Shopee::createPayload($dtoken = [
             'shop_id' => $request->get('shop_id'),
-            'access_token' => $data['access_token'],
-            'refresh_token' => $data['refresh_token'],
-            'refresh_at' => now()->addSeconds(intval($data['expire_in']) - 300),
+            'access_token' => $auth['access_token'],
+            'refresh_token' => $auth['refresh_token'],
+            'refresh_at' => now()->addSeconds(intval($auth['expire_in']) - 300),
         ]);
 
         $model->save();
@@ -71,7 +75,8 @@ Route::group(['prefix' => 'tokopedia'], function (\Illuminate\Routing\Router $ro
             'service_id' => env('MARKETPLACE_TOKOPEDIA_SERVICE', ''),
         ]);
 
-        return redirect()->away(config('marketplace.via.tokopedia.authorize_url') ."?$link");
+        $authURL = "https://services.tiktokshop.com/open/authorize";
+        return redirect()->away("$authURL?$link");
     });
 
     $router->get("/auth-callback", function (\Illuminate\Http\Request $request) {
@@ -80,9 +85,9 @@ Route::group(['prefix' => 'tokopedia'], function (\Illuminate\Routing\Router $ro
         ]);
 
         $response = Tokopedia::getToken($request->get('code'));
-        $data = $response->json('data');
+        $auth = $response->json('data');
 
-        $response = Tokopedia::getShops($data['access_token']);
+        $response = Tokopedia::getShops($auth['access_token']);
         $shops = $response->json('data.shops');
 
         $shop = collect($shops)->first();
@@ -96,9 +101,9 @@ Route::group(['prefix' => 'tokopedia'], function (\Illuminate\Routing\Router $ro
         $model->via = 'tokopedia';
         $model->payload = Tokopedia::createPayload([
             'cipher' => $shop['cipher'],
-            'access_token' => $data['access_token'],
-            'refresh_token' => $data['refresh_token'],
-            'refresh_at' => now()->addSeconds(intval($data['access_token_expire_in']) - 300),
+            'access_token' => $auth['access_token'],
+            'refresh_token' => $auth['refresh_token'],
+            'refresh_at' => now()->setTimestamp(intval($auth['access_token_expire_in']) - 300),
         ]);
 
         $model->save();
@@ -158,14 +163,8 @@ Route::group(['prefix' => 'store', 'middleware' => [ForceJsonResponse::class]], 
     });
 
     $router->get("{mid}/orders/{sn}", function (\Illuminate\Http\Request $request) {
-
         $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
-
-        return $marketplace->client->request('order.detail', [
-            'sn' => $request->route('sn'),
-        ]);
-
-        return $response->json('response.item');
+        return $marketplace->getMarketplaceOrderDetail($request->all());
     });
 
     $router->get("{mid}/orders", function (\Illuminate\Http\Request $request) {
