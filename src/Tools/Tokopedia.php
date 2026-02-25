@@ -247,8 +247,8 @@ class Tokopedia implements ClientInterface
             $newTime = strtotime($parameter['date'] . ' +1 day');
         }
         else {
-            $newTime = Carbon::createFromTime(0,0,0)->timestamp;
-            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp;
+            $newTime = Carbon::createFromTime(0,0,0)->addDay()->timestamp;
+            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-13)->timestamp;
         }
 
         $response = $this->onFetchOrder([
@@ -277,11 +277,7 @@ class Tokopedia implements ClientInterface
                 ->withQueryParameters([
                     'page_size' => 50,
                 ])
-                ->post('/order/202309/orders/search', array_merge([
-                    'create_time_ge' => Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp,
-                    'create_time_lt' => Carbon::createFromTime(0,0,0)->timestamp,
-
-                ], $mergeParams));
+                ->post('/order/202309/orders/search', $mergeParams);
 
             $orders = collect($response->json('data.orders'));
 
