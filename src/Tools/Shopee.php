@@ -330,6 +330,21 @@ class Shopee implements ClientInterface
             ]);
 
             collect($responseDetail->json('response.order_list'))->each(function($e) use (&$collection) {
+
+                if ($e['order_status'] == 'READY_TO_SHIP') {
+                    $shipping = $this->api()->get('/api/v2/logistics/get_shipping_parameter', [
+                        'order_sn' => $e['order_sn'],
+                    ]);
+
+                    $e = array_merge($e, [
+                        'pickup_address' => collect($shipping->json('response.pickup.address_list') ?? [])
+                            ->map(fn($a) => [
+                                'address_id' => $a['address_id'],
+                                'timeslots' => $a['time_slot_list'] ?? [],
+                            ])->toArray(),
+                    ]);
+                }
+
                 $collection->push($e);
             });
 
