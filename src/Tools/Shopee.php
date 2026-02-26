@@ -250,8 +250,8 @@ class Shopee implements ClientInterface
             $newTime = strtotime($parameter['date'] . ' +1 day');
         }
         else {
-            $newTime = Carbon::createFromTime(0,0,0)->timestamp;
-            $lastTime = Carbon::createFromTime(0,0,0)->addDays(-15)->timestamp;
+            $lastTime = strtotime($parameter['date'] . ' -13 day');
+            $newTime = strtotime($parameter['date'] . ' +1 day');
         }
 
         $response = $this->onFetchOrder([
@@ -295,13 +295,13 @@ class Shopee implements ClientInterface
                 // 'cancel_reason',
                 // 'cancel_time',
 
-                // 'estimated_shipping_fee',
-                // 'actual_shipping_fee',
-                // 'shipping_carrier',
-                // 'order_chargeable_weight_gram',
+                'estimated_shipping_fee',
+                'actual_shipping_fee',
+                'shipping_carrier',
+                'order_chargeable_weight_gram',
 
-                // 'dropshipper',
-                // ' dropshipper_phone',
+                'dropshipper',
+                'dropshipper_phone',
 
                 'recipient_address',
                 'goods_to_declare',
