@@ -269,7 +269,6 @@ class Tokopedia implements ClientInterface
 
         $collection = collect();
         $done = false;
-        $orderPackage = [];
 
         ## Fetch order list
         while ($done == false) {
@@ -283,9 +282,9 @@ class Tokopedia implements ClientInterface
 
             if ($orders->count() <= 0) break;
 
-            $orders->each(function($e) use (&$collection, &$orderPackage) {
+            $orders->each(function($e) use (&$collection) {
 
-                $items = collect($e['line_items'])->reduceWithKeys(function($all, $item) use (&$orderPackage, $e) {
+                $items = collect($e['line_items'])->reduceWithKeys(function($all, $item) {
 
                     $key = $item['sku_id'] ?: 'ID:'. $item['product_id'];
 
@@ -300,8 +299,6 @@ class Tokopedia implements ClientInterface
 
                 $collection->push(array_merge($e, [
                     'line_items' => array_values($items),
-                    'line_itemx' => $e['line_items'],
-                    'package' => $orderPackage
                 ]));
 
             });

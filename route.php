@@ -5,6 +5,8 @@ use Virmata\MarketplaceClient\Middleware\ForceJsonResponse;
 use Virmata\MarketplaceClient\Tools\Shopee;
 use Virmata\MarketplaceClient\Tools\Tokopedia;
 
+use function Symfony\Component\String\s;
+
 Route::get('/', function () {
     return response()->json([
         'version' => '1.0.0',
@@ -120,46 +122,61 @@ Route::group(['prefix' => 'tokopedia'], function (\Illuminate\Routing\Router $ro
 Route::group(['prefix' => 'store', 'middleware' => [ForceJsonResponse::class]], function (\Illuminate\Routing\Router $router) {
 
     ## ORDERS
-    $router->get("{mid}/orders/ready", function (\Illuminate\Http\Request $request) {
-        /** @var \Virmata\MarketplaceClient\Models\Marketplace */
-        $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
-        return $marketplace->getMarketplaceOrder(['status' => 'READY_TO_SHIP']);
-    });
-
-    $router->get("{mid}/orders/parameter", function (\Illuminate\Http\Request $request) {
-        $request->validate([
-            'sn' => 'required|string',
-        ]);
-
-        $sn = $request->get("sn");
-        $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
-
-        return $marketplace->client->api()->get('/api/v2/logistics/get_shipping_parameter', [
-            "order_sn" => $sn,
-        ])->json('response.pickup.address_list');
-    });
-
     $router->post("{mid}/orders/shipping", function (\Illuminate\Http\Request $request) {
         $request->validate([
-            'sn' => 'required|string',
-            'address_id' => 'required',
-            'pickup_time_id' => 'required',
+            'via' => 'required|string',
         ]);
 
-        $sn = $request->get("sn");
-        $addressId = $request->get("address_id");
-        $pickupTimeId = $request->get("pickup_time_id");
-        $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
+        switch ($request->get('via')) {
+            case 'shopee':
+                $request->validate([
+                    'sn' => 'required|string',
+                    'address_id' => 'required',
+                    'pickup_time_id' => 'required',
+                ]);
 
-        $response = $marketplace->client->api()->post('/api/v2/logistics/ship_order', [
-            "order_sn" => $sn,
-            "pickup" => [
-                "address_id" => intval($addressId),
-                "pickup_time_id" => ($pickupTimeId),
-            ],
-        ]);
 
-        return $response->json();
+                $sn = $request->get("sn");
+                $addressId = $request->get("address_id");
+                $pickupTimeId = $request->get("pickup_time_id");
+                $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
+
+                $response = $marketplace->client->api()->post('/api/v2/logistics/ship_order', [
+                    "order_sn" => $sn,
+                    "pickup" => [
+                        "address_id" => intval($addressId),
+                        "pickup_time_id" => strval($pickupTimeId),
+                    ],
+                ]);
+
+                return [
+                    "success" => $response->successful(),
+                    "message" => $response->json('message') ?? "Successfully set order [{$sn}] to shipping.",
+                ];
+
+            case 'tokopedia':
+                $request->validate([
+                    'package_id' => 'required',
+                ]);
+
+                $marketplace = app(config('marketplace.model'))->findOrFail($request->route('mid'));
+
+                $parameters = $request->only(['handover_method', 'pickup_slot', 'self_shipment']);
+
+                $response = $marketplace->client->api()->post("/fulfillment/202309/packages/{$request->get('package_id')}/ship", $parameters);
+
+                return [
+                    "success" => $response->successful(),
+                    "message" => $response->json('message') ?? "Successfully set package [{$request->get('package_id')}] to shipped.",
+                ];
+
+                break;
+            default:
+                return response()->json([
+                    'error' => 'Unsupported marketplace [via]',
+                ], 400);
+        }
+
     });
 
     $router->get("{mid}/orders/{sn}", function (\Illuminate\Http\Request $request) {
